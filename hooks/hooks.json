@@ -1,0 +1,16 @@
+{
+  "description": "claim-check: at the end of each turn, compares the agent's claims that tests, a build or a lint/type check passed with the last matching command in the transcript, and reports the result without blocking",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/bin/claim-check\" hook stop",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

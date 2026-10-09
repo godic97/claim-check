@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claim-check",
+  "description": "Checks an agent's success claims against what actually ran.",
+  "owner": {
+    "name": "godic97"
+  },
+  "plugins": [
+    {
+      "name": "claim-check",
+      "description": "Checks Claude's claims that tests, a build or a lint/type check passed against the commands that actually ran in the session, and reports the result at the end of each turn without blocking. English and Korean.",
+      "source": "./",
+      "category": "testing"
+    }
+  ]
+}
