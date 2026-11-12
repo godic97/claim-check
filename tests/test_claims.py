@@ -86,10 +86,40 @@ def test_korean_non_claims(text):
     assert kinds(text) == []
 
 
-def test_one_claim_per_kind_in_fixed_order():
-    found = find("Build succeeds. All tests pass. The tests pass again. 린트 통과.")
-    assert [c.kind for c in found] == ["test", "build", "lint"]
-    assert found[0].quote == "All tests pass."
+def test_every_claim_in_message_order():
+    found = find("Build succeeds. All tests pass. The tests pass again. 린트 통과. Tests pass and the build succeeds.")
+    assert [c.kind for c in found] == ["build", "test", "test", "lint", "test", "build"]
+    assert found[1].quote == "All tests pass."
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Committed and pushed main.", ["commit", "push"]),
+    ("I pushed the tag.", ["push"]),
+    ("- Tagged v1.2.", ["tag"]),
+    ("963d9da를 push했고 태그 claim-check--v0.1.1도 올렸어.", ["push", "tag"]),
+    ("커밋 완료, GitHub에 올렸어.", ["commit", "push"]),
+    ("I haven't pushed yet.", []),
+    ("The tag was pushed by CI.", []),
+    ("push 여부 물어볼게.", []),
+    ("커밋은 안 했어.", []),
+    ("push 해야 함.", []),
+    ("커밋할지 확인했어.", []),
+])
+def test_action_claims(text, expected):
+    assert kinds(text) == expected
+
+
+def test_targets_and_count():
+    claim = find("deid-guard 테스트 34개 전부 통과 (tests/test_a.py, v0.1.1).")[0]
+    assert claim.targets == ("deid-guard", "tests/test_a.py", "v0.1.1")
+    assert claim.count == 34
+    assert find("All 42 tests pass in auth.")[0].count == 42
+    assert find("pytest: 12 passed.")[0].count == 12
+    assert find("3 files changed and the tests pass.")[0].count is None
+    assert find("Release 0.1.1 tests pass.")[0].count is None
+    assert find("파일 3개 고치고 테스트 통과.")[0].count is None
+    assert find("Pushed main.")[0].count is None
+    assert find("테스트 12개 통과하고 push했어.")[1].count == 12  # harmless: a push has no passing count to compare
 
 
 def test_quote_is_the_sentence_shortened():

@@ -1,6 +1,6 @@
 import pytest
 
-from claim_check.commands import classify, outcome, segments, split_heredocs
+from claim_check.commands import classify, outcome, segments, split_heredocs, action, action_outcome
 
 
 def kind(command):
@@ -329,3 +329,33 @@ def test_outcome_unmasked_chain_does_not_guess_whose_summary():
     segs = segments("npm run build && npm test")
     assert outcome(segs, 0, 0, "Compiled successfully\nNo tests found") == ("pass", None)
     assert outcome(segs, 1, 1, "src/a.ts(1,1): error TS1: x") == ("fail", "exit code 1")
+
+
+@pytest.mark.parametrize("command, expected", [
+    ("git commit -m x", "commit"),
+    ("git -C ~/r -c user.name=a commit -qm x", "commit"),
+    ("git push origin main v1", "push"),
+    ("git tag v1", "tag"),
+    ("git tag -a v1 -m msg", "tag"),
+    ("claude plugin tag plugins/x", "tag"),
+    ("git tag", None), ("git tag -l 'v*'", None), ("git tag -d v1", None),
+    ("git push -n origin", None), ("git push --dry-run", None), ("git commit --help", None),
+    ("claude plugin tag . --dry-run", None), ("git status", None), ("git log --oneline", None),
+])
+def test_action(command, expected):
+    assert action(segments(command)[0].words) == expected
+
+
+def test_action_outcome():
+    def run(command, code, output):
+        segs = segments(command)
+        i = next(i for i, s in enumerate(segs) if action(s.words))
+        return action_outcome(segs, i, action(segs[i].words), code, output)
+    assert run("git commit -m x", 0, "[main 963d9da] x\n 1 file changed") == ("pass", "[main 963d9da] x")
+    assert run("git commit -m x", 1, "nothing to commit, working tree clean") == ("fail", "nothing to commit, working tree clean")
+    assert run("git commit -m x", 1, "") == ("fail", "exit code 1")
+    assert run("git push | tail -1", 0, "Everything up-to-date") == ("pass", "Everything up-to-date")
+    assert run("git push 2>&1 | tail -1", 0, "error: failed to push some refs") == ("fail", "error: failed to push some refs")
+    assert run("git push | tail -1", 0, "")[0] == "unknown"
+    assert run("git commit -m x && git push", 1, "")[0] == "unknown"
+    assert run("claude plugin tag . | head -1", 0, "✔ Created tag x--v1") == ("pass", "✔ Created tag x--v1")

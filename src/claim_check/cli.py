@@ -44,7 +44,7 @@ def _hook(event):
 def _check(args):
     message = args.message if args.message is not None else transcript.last_message(args.transcript)
     found = check(message, args.transcript, args.cwd)
-    print("\n".join(found) if found else "claim-check: no test, build or lint claims in the message")
+    print("\n".join(found) if found else "claim-check: no test, build, lint, commit, push or tag claims in the message")
     return 0
 
 

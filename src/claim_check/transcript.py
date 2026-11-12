@@ -28,12 +28,13 @@ SCRIPT_WRITE = re.compile(r"\.write_(?:text|bytes)\(|\bopen\([^)\n]*,\s*['\"][wa
 
 @dataclass
 class Run:
-    kind: str  # test | build | lint
+    kind: str  # test | build | lint | commit | push | tag
     command: str  # the check itself: the simple command inside the Bash command, wrappers removed
     outcome: str  # pass | fail | empty | unknown
     detail: str | None  # the output's summary line, or why the outcome is unknown
     seq: int = 0  # position among the session's tool results, main session and subagents merged by time
     subagent: bool = False
+    where: str = ""  # the directory it ran in: the session's cwd, then any `cd` before it in the same command
 
 
 @dataclass
@@ -103,10 +104,19 @@ def _shell_edit(command, cwd):
     return None
 
 
-def _bash(tool_input, block, tool_result, cwd, out):
+def _where(segs, i, start):
+    here = start
+    for seg in segs[:i]:
+        if seg.words[:1] == ["cd"] and len(seg.words) > 1:
+            here = os.path.join(here, seg.words[1])
+    return os.path.normpath(here) if here else ""
+
+
+def _bash(tool_input, block, tool_result, cwd, out, start=""):
     command = tool_input.get("command") or ""
     segs = commands.segments(command)
-    checks = [(i, kind) for i, kind in ((i, commands.classify(s.words)) for i, s in enumerate(segs)) if kind]
+    checks = [(i, kind) for i, kind in ((i, commands.classify(s.words) or commands.action(s.words))
+                                        for i, s in enumerate(segs)) if kind]
     if not checks:
         label = None if block.get("is_error") else _shell_edit(command, cwd)
         if label:
@@ -125,8 +135,10 @@ def _bash(tool_input, block, tool_result, cwd, out):
         reason = "it timed out"
     exit_code = int(exit_match.group(1)) if exit_match else 0
     for i, kind in checks:
-        outcome, detail = ("unknown", reason) if reason else commands.outcome(segs, i, exit_code, output)
-        out.append(Run(kind, " ".join(segs[i].words), outcome, detail))
+        judge = commands.outcome if kind in ("test", "build", "lint") else \
+            lambda s, j, code, text: commands.action_outcome(s, j, kind, code, text)
+        outcome, detail = ("unknown", reason) if reason else judge(segs, i, exit_code, output)
+        out.append(Run(kind, " ".join(segs[i].words), outcome, detail, where=_where(segs, i, start)))
 
 
 def _entries(path, wanted):
@@ -164,7 +176,7 @@ def _items(path, cwd, subagent):
                 name, tool_input = pending.pop(block["tool_use_id"])
                 found = []
                 if name == "Bash":
-                    _bash(tool_input, block, entry.get("toolUseResult"), cwd, found)
+                    _bash(tool_input, block, entry.get("toolUseResult"), cwd, found, entry.get("cwd") or "")
                 elif name in EDIT_TOOLS and not block.get("is_error"):
                     path_ = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
                     if _counts(path_, cwd):

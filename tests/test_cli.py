@@ -133,7 +133,7 @@ def test_check_command(session, capsys):
     assert cli.main(["check", str(session.path)]) == 0
     assert capsys.readouterr().out.startswith('claim-check ✓ "All tests pass."')
     assert cli.main(["check", str(session.path), "--message", "Nothing to see."]) == 0
-    assert capsys.readouterr().out == "claim-check: no test, build or lint claims in the message\n"
+    assert capsys.readouterr().out == "claim-check: no test, build, lint, commit, push or tag claims in the message\n"
 
 
 def test_cwd_filters_edits_outside_the_project(session, project):
@@ -182,3 +182,51 @@ def test_check_command_with_cwd(session, project, capsys):
     session.bash("pytest", "1 passed")
     assert cli.main(["check", str(session.path), "--message", "Build succeeds. Tests pass."]) == 0
     assert capsys.readouterr().out.count("\n") == 2
+
+
+def test_claim_names_its_target(session, tmp_path):
+    a, b = tmp_path / "deid-guard", tmp_path / "claim-check"
+    session.bash(f"cd {a} && claude plugin test . 2>&1 | tail -3", " 34 pass\n 0 fail")
+    session.bash(f"cd {b} && pytest -q", "1 failed in 0.1s", exit_code=1)
+    assert stop(session, "deid-guard 테스트 34개 전부 통과.").startswith(
+        'claim-check ✓ "deid-guard 테스트 34개 전부 통과." — `claude plugin test .` passed: 34 pass')
+    assert "the last test run failed (`pytest -q`" in stop(session, "claim-check 테스트 통과.")
+    assert "the last test run failed" in stop(session, "All tests pass in src/x-y.py.")  # unknown name: last run
+    session.bash(f"cd {tmp_path / 'deid-guard-old'} && pytest -q", "9 passed")
+    assert stop(session, "deid-guard 테스트 통과.").startswith('claim-check ✓ "deid-guard 테스트 통과." — `claude plugin test .`')
+    session.bash(f"cd {tmp_path / 'sw-qa'} && git commit -qm x")
+    assert stop(session, "sw-qa 테스트 통과.") == 'claim-check ⚠ "sw-qa 테스트 통과." — no test command for sw-qa ran in this session'
+
+
+def test_claimed_count_must_match(session):
+    session.bash("pytest -q", "12 passed in 0.1s")
+    assert stop(session, "테스트 12개 통과.").startswith("claim-check ✓")
+    assert stop(session, "All 14 tests pass.") == \
+        'claim-check ✗ "All 14 tests pass." — the last test run shows 12 passing, not 14 (`pytest -q`: 12 passed in 0.1s)'
+
+
+def test_action_claims(session, project):
+    session.bash("git add -A && git commit -q -m fix", "")
+    session.bash("git push origin main 2>&1 | tail -2", "To https://x/y.git\n   7811bed..963d9da  main -> main")
+    assert stop(session, "Committed and pushed main.") == "\n".join([
+        'claim-check ✓ "Committed and pushed main." — `git commit -q -m fix` succeeded',
+        'claim-check ✓ "Committed and pushed main." — `git push origin main` succeeded: 7811bed..963d9da  main -> main'])
+    session.bash("git push origin v1 2>&1 | tail -1", "! [rejected]        v1 -> v1 (already exists)")
+    assert stop(session, "태그 v1도 push했어.").startswith('claim-check ✗ "태그 v1도 push했어." — the last push run failed')
+    assert stop(session, "태그 달았어.") == 'claim-check ⚠ "태그 달았어." — no tag command ran in this session'
+    session.edit(str(project / "src/a.py"))
+    assert "1 file (src/a.py) changed after the last commit run" in stop(session, "커밋했어.", project)
+
+
+def test_target_staleness_and_pushed_tag(session, tmp_path):
+    a = tmp_path / "deid-guard"
+    session.bash(f"cd {a} && claude plugin test .", " 34 pass\n 0 fail")
+    session.edit(str(tmp_path / "claim-check/src/x.py"))
+    assert stop(session, "deid-guard 테스트 통과.", tmp_path).startswith("claim-check ✓")
+    session.edit(str(a / "hooks/register.ts"))
+    assert "1 file (deid-guard/hooks/register.ts) changed after" in stop(session, "deid-guard 테스트 통과.", tmp_path)
+    session.bash(f"cd {a} && claude plugin tag .", "✔ Created tag deid-guard--v0.4.2")
+    session.bash(f"cd {a} && git push origin main deid-guard--v0.4.2 2>&1 | tail -1", " * [new tag]  deid-guard--v0.4.2 -> deid-guard--v0.4.2")
+    assert stop(session, "deid-guard--v0.4.2 push했고 태그도 올렸어.").count("\n") == 0
+    assert stop(session, "태그 deid-guard--v0.4.2도 올렸어.").startswith(
+        'claim-check ✓ "태그 deid-guard--v0.4.2도 올렸어." — `git push origin main deid-guard--v0.4.2` succeeded')

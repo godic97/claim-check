@@ -1,4 +1,4 @@
-"""Classify shell commands as test, build or lint runs, and read their outcome from the output."""
+"""Classify shell commands as test, build or lint runs or as commit, push or tag actions, and read their outcome."""
 
 import os
 import re
@@ -243,6 +243,53 @@ def classify(words):
     return None
 
 
+GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
+TAG_QUERY_FLAGS = {"-l", "--list", "-d", "--delete", "-v", "--verify", "--contains", "--points-at"}
+
+
+def action(words):
+    """'commit', 'push' or 'tag' for a command that makes one, else None."""
+    if words[:3] == ["claude", "plugin", "tag"]:
+        return None if INFO_FLAGS & set(words) else "tag"
+    if words[:1] != ["git"]:
+        return None
+    rest = words[1:]
+    while rest and rest[0].startswith("-"):
+        rest = rest[2:] if rest[0] in GIT_VALUE_OPTIONS else rest[1:]
+    sub, args = (rest[0], rest[1:]) if rest else ("", [])
+    if INFO_FLAGS & set(args) or (sub == "push" and "-n" in args):
+        return None
+    if sub == "tag":
+        named = any(not a.startswith("-") for a in args)
+        return "tag" if named and not TAG_QUERY_FLAGS & set(args) else None
+    return sub if sub in ("commit", "push") else None
+
+
+ACTION_FAIL = re.compile(r"^(?:fatal|error):|\[(?:remote )?rejected\]|nothing (?:added )?to commit|already exists|"
+                         r"Permission denied|\b403\b", re.M)
+ACTION_PASS = {
+    "commit": re.compile(r"^\[[^\]\n]+ [0-9a-f]{7,}\]", re.M),
+    "push": re.compile(r"^\s*\+?\s*[0-9a-f]{7,}\.\.\.?[0-9a-f]{7,}\s+\S+\s+->|\[new (?:branch|tag)\]|Everything up-to-date", re.M),
+    "tag": re.compile(r"Created tag"),
+}
+
+
+def action_outcome(segs, i, kind, exit_code, output):
+    """('pass'|'fail'|'unknown', summary) for the commit, push or tag in segment i."""
+    later = any(classify(s.words) or action(s.words) for s in segs[i + 1:])
+    if not masked(segs, i) and (exit_code == 0 or not later):
+        if exit_code == 0:
+            return "pass", _first([ACTION_PASS[kind]], output)
+        return "fail", _first([ACTION_FAIL], output) or f"exit code {exit_code}"
+    for verdict, marker in (("fail", ACTION_FAIL), ("pass", ACTION_PASS[kind])):
+        line = _first([marker], output)
+        if line:
+            return verdict, line
+    if masked(segs, i):
+        return "unknown", "its exit status went through a pipe, `||` or `;`, and the output has no summary line"
+    return "unknown", f"exit code {exit_code} could come from a later command in the same line"
+
+
 # Output markers. Fail markers win over pass markers.
 FAIL_MARKERS = [
     re.compile(r"\b[1-9]\d*\s+(?:failed|failing|errors?)\b", re.I),
@@ -315,7 +362,7 @@ def outcome(segs, i, exit_code, output):
     An exit code that belongs to the check decides; output markers decide only when it is hidden.
     """
     checks = [j for j, seg in enumerate(segs) if classify(seg.words)]
-    later_checks = any(j > i for j in checks)
+    later_checks = any(classify(s.words) or action(s.words) for s in segs[i + 1:])
     if not masked(segs, i) and (exit_code == 0 or not later_checks):
         empty = _first(EMPTY_MARKERS, output) if len(checks) == 1 else None
         if empty:
