@@ -246,6 +246,7 @@ def classify(words):
 # Output markers. Fail markers win over pass markers.
 FAIL_MARKERS = [
     re.compile(r"\b[1-9]\d*\s+(?:failed|failing|errors?)\b", re.I),
+    re.compile(r"^[ \t]*[1-9]\d*[ \t]+fail[ \t]*$", re.M),  # bun test, claude plugin test
     re.compile(r"^FAIL(?:ED)?\b", re.M),
     re.compile(r"--- FAIL:"),
     re.compile(r"test result: FAILED"),
@@ -258,9 +259,12 @@ FAIL_MARKERS = [
 ]
 EMPTY_MARKERS = [
     re.compile(r"collected 0 items|no tests ran|No test files found|No tests found|Ran 0 tests|no tests to run|0 passing", re.I),
+    re.compile(r"no \*\.test\.ts or \*\.test\.tsx under"),  # claude plugin test
+
 ]
 PASS_MARKERS = [
     re.compile(r"\b[1-9]\d*\s+(?:passed|passing)\b"),
+    re.compile(r"^[ \t]*[1-9]\d*[ \t]+pass[ \t]*$", re.M),  # bun test, claude plugin test
     re.compile(r"^ok\s+\S+", re.M),
     re.compile(r"test result: ok\."),
     re.compile(r"BUILD SUCCESS(?:FUL)?|Build succeeded"),

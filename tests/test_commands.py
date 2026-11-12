@@ -169,6 +169,19 @@ def test_outcome_masked_exit_status_uses_output():
     assert check("pytest || true", 0, "")[0] == "unknown"
 
 
+def test_outcome_bun_style_summary():
+    # `claude plugin test` and `bun test` print " N pass" and " N fail" on their own lines.
+    passed = "(pass) reveal command > toast [20.82ms]\n\n 34 pass\n 0 fail\nRan 34 tests across 2 files. [0.90s]"
+    failed = "(fail) the file did not load\n\n 0 pass\n 1 fail\nRan 1 test across 1 file. [0.15s]"
+    assert check("claude plugin test . 2>&1 | tail -3", 0, passed) == ("pass", "34 pass")
+    assert check("claude plugin test . 2>&1 | tail -3", 0, failed) == ("fail", "1 fail")
+    assert check("bun test | grep -v pass", 0, "(fail) a > b\n\n 1 fail\nRan 2 tests across 1 file.") == ("fail", "1 fail")
+    assert check("bun test | tail -3", 0, passed)[0] == "pass"
+    assert check("claude plugin test .", 1, failed) == ("fail", "1 fail")
+    assert check("claude plugin test .", 1, "claude plugin test: no *.test.ts or *.test.tsx under /x")[0] == "empty"
+    assert check("make test | tail -1", 0, "the first pass\nfailed to compile")[0] == "unknown"
+
+
 def test_outcome_no_tests_ran():
     assert check("pytest", 5, "collected 0 items\nno tests ran") == ("empty", "collected 0 items")
     assert check("npx vitest run", 1, "No test files found, exiting with code 1")[0] == "empty"

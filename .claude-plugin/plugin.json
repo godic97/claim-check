@@ -1,6 +1,6 @@
 {
   "name": "claim-check",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Checks Claude's claims that tests, a build or a lint/type check passed against the commands that actually ran in the session, and reports the result at the end of each turn without blocking. English and Korean.",
   "author": {
     "name": "godic97"

@@ -27,9 +27,9 @@ claim-check is part of [Gingoa](https://github.com/godic97/Gingoa).
 
 Negations, conditions, plans, questions and quotes are not claims: "tests don't pass yet", "if the tests pass", "tests should pass now", "do the tests pass?", "테스트가 통과하지 않았습니다", "통과 여부 확인 필요", "테스트 통과 예상", text in code blocks, `>` quotes and quoted phrases. Mixed results such as "3 passed, 1 failed" or "21개 중 20개 통과" are reports of a failure, not claims of success.
 
-**Evidence.** For each claim, claim-check finds the last command of the same kind in the session, subagents included. It recognizes the usual runners: pytest, unittest, tox, vitest, jest, mocha, `npm`/`pnpm`/`yarn`/`bun` scripts, `go test`, `cargo test`, Maven, Gradle, `dotnet test`, sbt, make, `tsc`, ESLint, Ruff, flake8, pyflakes, mypy, pyright, clippy, `go vet` and others, through wrappers like `uv run`, `npx`, `timeout` and `python -m`.
+**Evidence.** For each claim, claim-check finds the last command of the same kind in the session, subagents included. It recognizes the usual runners: pytest, unittest, tox, vitest, jest, mocha, `npm`/`pnpm`/`yarn`/`bun` scripts, `bun test`, `claude plugin test`, `go test`, `cargo test`, Maven, Gradle, `dotnet test`, sbt, make, `tsc`, ESLint, Ruff, flake8, pyflakes, mypy, pyright, clippy, `go vet` and others, through wrappers like `uv run`, `npx`, `timeout` and `python -m`.
 
-The outcome comes from the command's exit code, which Claude Code records with every Bash call, and from the tool's own summary line ("1 failed", "BUILD FAILURE", "error TS2304", "test result: ok", ...). When the exit code is hidden (`pytest | tail -5`, `pytest; echo done`), only the summary line counts.
+The outcome comes from the command's exit code, which Claude Code records with every Bash call, and from the tool's own summary line ("1 failed", " 1 fail", "BUILD FAILURE", "error TS2304", "test result: ok", ...). When the exit code is hidden (`pytest | tail -5`, `pytest; echo done`), only the summary line counts.
 
 **Verdicts.**
 
