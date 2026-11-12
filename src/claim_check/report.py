@@ -3,13 +3,12 @@
 import os
 import re
 
-LABEL = {"test": "test", "build": "build", "lint": "lint/type-check", "commit": "commit", "push": "push", "tag": "tag"}
 CHECKS = ("test", "build", "lint")  # a code change after the run makes it stale; for actions only a commit goes stale
-MAX_FILES = 3
+MAX_FILES = 2
 PASSED = re.compile(r"(\d+)\s+(?:passed|passing|pass)\b|Passed:\s*(\d+)")
 
 
-def _command(command, limit=70):
+def _command(command, limit=40):
     command = " ".join(command.split())
     return command if len(command) <= limit else command[:limit - 1] + "…"
 
@@ -24,7 +23,7 @@ def _files(edits, cwd):
             paths.append(path)
     shown = ", ".join(paths[:MAX_FILES])
     if len(paths) > MAX_FILES:
-        shown += f" and {len(paths) - MAX_FILES} more"
+        shown += f" +{len(paths) - MAX_FILES}"
     return f"{len(paths)} file{'s' if len(paths) != 1 else ''} ({shown})"
 
 
@@ -38,42 +37,53 @@ def _passed(detail):
     return int(m.group(1) or m.group(2)) if m else None
 
 
-def line(claim, session, cwd=None):
-    """One report line for one claim."""
-    label = LABEL[claim.kind]
-    quote = f'"{claim.quote}"'
+def _judge(claim, session, cwd):
+    """(mark, names the claim was matched by, "<command> · <result>" or "no run")."""
     # Only names that some command in the session ran in or on narrow the match; other words stay prose.
     known = [t for t in claim.targets if any(_names(r, t) for r in session.runs)]
     kinds = {claim.kind, "push"} if claim.kind == "tag" and known else {claim.kind}  # pushing a named tag backs it
     runs = [r for r in session.runs if r.kind in kinds and (not known or any(_names(r, t) for t in known))]
     if not runs:
-        scope = f" for {', '.join(known)}" if known else ""
-        return f"claim-check ⚠ {quote} — no {label} command{scope} ran in this session"
+        return "⚠", known, "no run"
     last = runs[-1]
-    command = _command(last.command) + ("` in a subagent" if last.subagent else "`")
-    passed = "passed" if claim.kind in CHECKS else "succeeded"
     later = [e for e in session.edits if e.seq > last.seq] if claim.kind in CHECKS + ("commit",) else []
     if known:  # a run picked by name goes stale only through edits to that name
         later = [e for e in later if any(re.search(rf"(?<![\w-]){re.escape(t)}(?![\w-])", e.path, re.I) for t in known)]
-    detail = f": {last.detail}" if last.detail else ""
+    then = f", then {_files(later, cwd)} changed" if later else ""
+    command = _command(last.command) + (" (subagent)" if last.subagent else "")
+
+    def out(mark, result):
+        return mark, known, f"{command} · {result}"
+
     if last.outcome == "fail":
-        text = f"claim-check ✗ {quote} — the last {label} run failed (`{command}{detail})"
-        if later:
-            text += f", and {_files(later, cwd)} changed after it without a re-run"
-        return text
+        return out("✗", (last.detail or "failed") + then)
     if last.outcome == "empty":
-        return f"claim-check ✗ {quote} — the last {label} run ran no tests (`{command}{detail})"
+        return out("✗", last.detail or "no tests ran")
     if last.outcome == "unknown":
-        return f"claim-check ⚠ {quote} — the result of the last {label} run is unknown (`{command}): {last.detail}"
+        return out("⚠", f"unknown: {last.detail}")
     shown = _passed(last.detail)
     if claim.count is not None and shown is not None and shown != claim.count:
-        return f"claim-check ✗ {quote} — the last {label} run shows {shown} passing, not {claim.count} (`{command}{detail})"
-    if later:
-        return f"claim-check ⚠ {quote} — {_files(later, cwd)} changed after the last {label} run (`{command}, {passed})"
-    if claim.kind not in CHECKS:
-        return f"claim-check ✓ {quote} — `{command} {passed}{detail}"
-    return f"claim-check ✓ {quote} — `{command} passed{detail} and nothing changed after it"
+        return out("✗", f"{shown} passed, claimed {claim.count}")
+    done = last.detail or ("passed" if claim.kind in CHECKS else "done")
+    return out("⚠", done + then) if later else out("✓", done)
+
+
+def _format(mark, kinds, names, rest):
+    return f"claim-check {mark} {' '.join(['+'.join(kinds)] + list(names))} · {rest}"
+
+
+def line(claim, session, cwd=None):
+    """One report line: `claim-check <mark> <kind> [<names>] · <command> · <result>`."""
+    mark, names, rest = _judge(claim, session, cwd)
+    return _format(mark, [claim.kind], names, rest)
 
 
 def lines(claims, session, cwd=None):
-    return list(dict.fromkeys(line(claim, session, cwd) for claim in claims))  # a push can back both push and tag
+    """One line per verdict: claims judged the same way share it (`push+tag`, `test` said twice)."""
+    groups = {}
+    for claim in claims:
+        mark, names, rest = _judge(claim, session, cwd)
+        kinds = groups.setdefault((mark, tuple(names), rest), [])
+        if claim.kind not in kinds:
+            kinds.append(claim.kind)
+    return [_format(mark, kinds, names, rest) for (mark, names, rest), kinds in groups.items()]

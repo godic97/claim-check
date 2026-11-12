@@ -308,7 +308,7 @@ def test_more_package_manager_scripts():
 
 def test_unknown_message_depends_on_masking_after_the_check():
     segs = segments("ls | wc -l; npm run build && npm test")
-    assert outcome(segs, 2, 1, "") == ("unknown", "exit code 1 could come from a later command in the same line")
+    assert outcome(segs, 2, 1, "") == ("unknown", "exit code 1 may be a later command's")
 
 
 @pytest.mark.parametrize("command", [

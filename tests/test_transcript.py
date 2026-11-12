@@ -31,9 +31,9 @@ def test_timeout_background_and_interrupt_are_unknown(session):
     session.bash("npm test", "Command running in background with ID: b1", run_in_background=True)
     session.bash("cargo test", "", interrupted=True)
     assert [(r[0], r[2], r[3]) for r in runs(session)] == [
-        ("test", "unknown", "it timed out"),
-        ("test", "unknown", "it ran in the background, and its result is not in the transcript"),
-        ("test", "unknown", "it was interrupted"),
+        ("test", "unknown", "timed out"),
+        ("test", "unknown", "ran in background"),
+        ("test", "unknown", "interrupted"),
     ]
 
 
@@ -133,7 +133,7 @@ def test_output_from_tool_result_stdout_and_stderr(session):
     session.tool("Bash", {"command": "pytest | tail -1"}, None, tool_result=None)
     assert [r[2:] for r in runs(session)] == [
         ("pass", "2 passed in 0.1s"), ("fail", "1 failed"),
-        ("unknown", "its exit status went through a pipe, `||` or `;`, and the output has no summary line")]
+        ("unknown", "exit code hidden by a pipe or ;")]
 
 
 def test_result_blocks_join_with_newlines(session):

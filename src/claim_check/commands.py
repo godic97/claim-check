@@ -247,15 +247,23 @@ GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
 TAG_QUERY_FLAGS = {"-l", "--list", "-d", "--delete", "-v", "--verify", "--contains", "--points-at"}
 
 
+def git_words(words):
+    """`git -C repo -c k=v push` as `git push`: the global options say nothing about what ran."""
+    if words[:1] != ["git"]:
+        return words
+    rest = words[1:]
+    while rest and rest[0].startswith("-"):
+        rest = rest[2:] if rest[0] in GIT_VALUE_OPTIONS else rest[1:]
+    return ["git"] + rest
+
+
 def action(words):
     """'commit', 'push' or 'tag' for a command that makes one, else None."""
     if words[:3] == ["claude", "plugin", "tag"]:
         return None if INFO_FLAGS & set(words) else "tag"
     if words[:1] != ["git"]:
         return None
-    rest = words[1:]
-    while rest and rest[0].startswith("-"):
-        rest = rest[2:] if rest[0] in GIT_VALUE_OPTIONS else rest[1:]
+    rest = git_words(words)[1:]
     sub, args = (rest[0], rest[1:]) if rest else ("", [])
     if INFO_FLAGS & set(args) or (sub == "push" and "-n" in args):
         return None
@@ -286,8 +294,8 @@ def action_outcome(segs, i, kind, exit_code, output):
         if line:
             return verdict, line
     if masked(segs, i):
-        return "unknown", "its exit status went through a pipe, `||` or `;`, and the output has no summary line"
-    return "unknown", f"exit code {exit_code} could come from a later command in the same line"
+        return "unknown", "exit code hidden by a pipe or ;"
+    return "unknown", f"exit code {exit_code} may be a later command's"
 
 
 # Output markers. Fail markers win over pass markers.
@@ -383,5 +391,5 @@ def outcome(segs, i, exit_code, output):
     if kind:
         return kind, summary
     if masked(segs, i):
-        return "unknown", "its exit status went through a pipe, `||` or `;`, and the output has no summary line"
-    return "unknown", f"exit code {exit_code} could come from a later command in the same line"
+        return "unknown", "exit code hidden by a pipe or ;"
+    return "unknown", f"exit code {exit_code} may be a later command's"

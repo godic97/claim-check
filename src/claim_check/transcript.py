@@ -126,19 +126,19 @@ def _bash(tool_input, block, tool_result, cwd, out, start=""):
     exit_match = EXIT_CODE.match(output.strip())
     reason = None
     if tool_input.get("run_in_background"):
-        reason = "it ran in the background, and its result is not in the transcript"
+        reason = "ran in background"
     elif isinstance(tool_result, dict) and tool_result.get("interrupted"):
-        reason = "it was interrupted"
+        reason = "interrupted"
     elif block.get("is_error") and not exit_match:
         if not re.search(r"timed out", output, re.I):
             return  # never ran: permission denied or blocked by a hook
-        reason = "it timed out"
+        reason = "timed out"
     exit_code = int(exit_match.group(1)) if exit_match else 0
     for i, kind in checks:
         judge = commands.outcome if kind in ("test", "build", "lint") else \
             lambda s, j, code, text: commands.action_outcome(s, j, kind, code, text)
         outcome, detail = ("unknown", reason) if reason else judge(segs, i, exit_code, output)
-        out.append(Run(kind, " ".join(segs[i].words), outcome, detail, where=_where(segs, i, start)))
+        out.append(Run(kind, " ".join(commands.git_words(segs[i].words)), outcome, detail, where=_where(segs, i, start)))
 
 
 def _entries(path, wanted):

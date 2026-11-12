@@ -5,11 +5,15 @@ Checks an AI coding agent's success claims against what actually ran.
 When Claude ends a turn with "all tests pass", "the build succeeds", "lint is clean" or "committed and pushed", claim-check looks up the last matching command in the session transcript and reports, under the answer, whether that command backs the claim:
 
 ```
-claim-check ✓ "All tests pass." — `pytest -q` passed: 12 passed in 0.41s and nothing changed after it
-claim-check ✗ "테스트 모두 통과." — the last test run failed (`pytest -q`: 1 failed, 11 passed in 0.40s)
-claim-check ⚠ "Pytest passes and the docstring is in." — 1 file (m.py) changed after the last test run (`pytest -q`, passed)
-claim-check ⚠ "The build succeeds." — no build command ran in this session
+claim-check ✓ test · pytest -q · 12 passed in 0.41s
+claim-check ✗ test · pytest -q · 1 failed, 11 passed in 0.40s
+claim-check ⚠ test · pytest -q · 12 passed, then 1 file (m.py) changed
+claim-check ✗ test deid-guard · claude plugin test . · 34 passed, claimed 36
+claim-check ✓ push+tag v1.2 · git push origin main v1.2 · * [new tag]  v1.2 -> v1.2
+claim-check ⚠ build · no run
 ```
+
+Each line is the verdict, what was claimed (and the folder, file or tag it named), the command that backs or contradicts it, and that command's result. Claims judged the same way share a line.
 
 The report is for you, not for Claude. claim-check never blocks a turn and never asks Claude to do anything. It reads the transcript on your machine and sends nothing anywhere.
 
